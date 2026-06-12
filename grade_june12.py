@@ -284,6 +284,7 @@ def analyze_student_zip(zip_path):
 def run_main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--student_zip", type=str, help="검사할 개별 학생 ZIP 파일 경로")
+    parser.add_argument("--dir", type=str, default="6월12", help="채점할 배치 디렉토리 이름")
     args = parser.parse_args()
     
     if args.student_zip:
@@ -292,16 +293,19 @@ def run_main():
         print(json.dumps(res, ensure_ascii=False))
         return
 
+    target_dir_name = args.dir
+    target_dir_path = os.path.join(BASE_DIR, target_dir_name)
+
     # 일괄 검사 실행 모드
-    if not os.path.exists(JUNE12_DIR):
-        print(f"[오류] 6월12일 폴더가 존재하지 않습니다: {JUNE12_DIR}")
+    if not os.path.exists(target_dir_path):
+        print(f"[오류] 폴더가 존재하지 않습니다: {target_dir_path}")
         return
         
-    folders = sorted([d for d in os.listdir(JUNE12_DIR) if os.path.isdir(os.path.join(JUNE12_DIR, d))])
+    folders = sorted([d for d in os.listdir(target_dir_path) if os.path.isdir(os.path.join(target_dir_path, d))])
     
     zip_tasks = []
     for folder in folders:
-        folder_path = os.path.join(JUNE12_DIR, folder)
+        folder_path = os.path.join(target_dir_path, folder)
         zip_files = [f for f in os.listdir(folder_path) if f.endswith('.zip')]
         for zf in zip_files:
             cleaned_name = re.sub(r'^[0-9_\-\s]+', '', zf.replace('.zip', '')).strip()
@@ -315,10 +319,10 @@ def run_main():
             })
             
     if not zip_tasks:
-        print("[경고] 6월12일 하위 폴더에서 ZIP 파일을 찾을 수 없습니다.")
+        print(f"[경고] {target_dir_name} 하위 폴더에서 ZIP 파일을 찾을 수 없습니다.")
         return
         
-    print(f"\n[6월 12일 일괄 CAD 검사 시작] 대상 학생 수: {len(zip_tasks)}명")
+    print(f"\n[{target_dir_name} 일괄 CAD 검사 시작] 대상 학생 수: {len(zip_tasks)}명")
     
     student_results = {}
     import subprocess
@@ -383,11 +387,11 @@ def run_main():
             }
 
     # 종합 리포트 마크다운 파일 작성
-    report_filename = f"grade_report_6월12.md"
-    report_path = os.path.join(JUNE12_DIR, report_filename)
+    report_filename = f"grade_report_{target_dir_name}.md"
+    report_path = os.path.join(target_dir_path, report_filename)
     
     md = []
-    md.append("# 3D 프린터 운용기능사 6월 12일 과제 자동 채점 보고서")
+    md.append(f"# 3D 프린터 운용기능사 {target_dir_name} 과제 자동 채점 보고서")
     md.append(f"- **채점 일시**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     md.append(f"- **대상 범위**: 1번 ~ 14번 과제 (간섭 및 링크 오류 전수 검사)")
     md.append(f"- **대상 학생**: {len(zip_tasks)}명\n")
