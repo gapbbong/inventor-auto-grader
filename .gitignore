@@ -1,0 +1,37 @@
+# Student submission directories (e.g., 6월12, 5월21)
+*월*
+
+# Converted pdf pages
+pdf_pages/
+
+# Python cache & temp directories
+__pycache__/
+*.pyc
+grade_temp_*/
+grade12_student_*/
+yunjoon_ref_*/
+
+# Inventor/CAD temporary files and backups
+OldVersions/
+*.lck
+*.log
+
+# Archives & CAD files
+*.zip
+*.rar
+*.7z
+*.ipt
+*.iam
+*.idw
+*.dwg
+*.stp
+*.step
+*.stl
+
+# Reports containing student names
+*_보고서.md
+grade_report_*.md
+
+# OS generated files
+.DS_Store
+Thumbs.db

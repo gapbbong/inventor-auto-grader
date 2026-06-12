@@ -1,0 +1,301 @@
+{
+    "19": {
+        "parts": {
+            "part1": {
+                "name": "22_01:1",
+                "filename": "22_01.ipt",
+                "volume": 2797.04,
+                "area": 2260.05,
+                "mass": 2.8
+            },
+            "part2": {
+                "name": "22_02:1",
+                "filename": "22_02.ipt",
+                "volume": 7147.46,
+                "area": 2818.43,
+                "mass": 7.15
+            }
+        },
+        "registered_at": "2026-06-12 09:20:56"
+    },
+    "1": {
+        "parts": {
+            "part1": {
+                "name": "09_01:1",
+                "filename": "09_01.ipt",
+                "volume": 6136.04,
+                "area": 3249.37,
+                "mass": 6.14
+            },
+            "part2": {
+                "name": "09_02:1",
+                "filename": "09_02.ipt",
+                "volume": 3444.97,
+                "area": 1830.14,
+                "mass": 3.44
+            }
+        },
+        "registered_at": "2026-06-12 14:18:45",
+        "source": "이윤준.zip"
+    },
+    "2": {
+        "parts": {
+            "part1": {
+                "name": "09_01:1",
+                "filename": "09_01.ipt",
+                "volume": 2892.85,
+                "area": 2399.42,
+                "mass": 2.89
+            },
+            "part2": {
+                "name": "09_02:1",
+                "filename": "09_02.ipt",
+                "volume": 3145.35,
+                "area": 2073.93,
+                "mass": 3.15
+            }
+        },
+        "registered_at": "2026-06-12 14:18:45",
+        "source": "이윤준.zip"
+    },
+    "3": {
+        "parts": {
+            "part1": {
+                "name": "09_01:1",
+                "filename": "09_01.ipt",
+                "volume": 7200.32,
+                "area": 4510.29,
+                "mass": 7.2
+            },
+            "part2": {
+                "name": "09_02:1",
+                "filename": "09_02.ipt",
+                "volume": 1844.4,
+                "area": 1099.53,
+                "mass": 1.84
+            }
+        },
+        "registered_at": "2026-06-12 14:18:46",
+        "source": "이윤준.zip"
+    },
+    "4": {
+        "parts": {
+            "part2": {
+                "name": "09_02:1",
+                "filename": "09_02.ipt",
+                "volume": 5132.97,
+                "area": 3387.53,
+                "mass": 5.13
+            },
+            "part1": {
+                "name": "09_01:1",
+                "filename": "09_01.ipt",
+                "volume": 4158.05,
+                "area": 2091.76,
+                "mass": 4.16
+            }
+        },
+        "registered_at": "2026-06-12 14:18:46",
+        "source": "이윤준.zip"
+    },
+    "5": {
+        "parts": {
+            "part1": {
+                "name": "09_01:1",
+                "filename": "09_01.ipt",
+                "volume": 10111.32,
+                "area": 5372.19,
+                "mass": 10.11
+            },
+            "part2": {
+                "name": "09_02:1",
+                "filename": "09_02.ipt",
+                "volume": 2322.86,
+                "area": 1264.59,
+                "mass": 2.32
+            }
+        },
+        "registered_at": "2026-06-12 14:18:47",
+        "source": "이윤준.zip"
+    },
+    "6": {
+        "parts": {
+            "part1": {
+                "name": "09_01:1",
+                "filename": "09_01.ipt",
+                "volume": 6730.09,
+                "area": 3180.5,
+                "mass": 6.73
+            },
+            "part2": {
+                "name": "09_02:1",
+                "filename": "09_02.ipt",
+                "volume": 2852.25,
+                "area": 1933.58,
+                "mass": 2.85
+            }
+        },
+        "registered_at": "2026-06-12 14:18:47",
+        "source": "이윤준.zip"
+    },
+    "7": {
+        "parts": {
+            "part1": {
+                "name": "09_01:1",
+                "filename": "09_01.ipt",
+                "volume": 5186.58,
+                "area": 3326.73,
+                "mass": 5.19
+            },
+            "part2": {
+                "name": "09_02:1",
+                "filename": "09_02.ipt",
+                "volume": 1020.85,
+                "area": 740.63,
+                "mass": 1.02
+            }
+        },
+        "registered_at": "2026-06-12 14:18:48",
+        "source": "이윤준.zip"
+    },
+    "8": {
+        "parts": {
+            "part1": {
+                "name": "09_01:1",
+                "filename": "09_01.ipt",
+                "volume": 4015.54,
+                "area": 2352.64,
+                "mass": 4.02
+            },
+            "part2": {
+                "name": "09_02:1",
+                "filename": "09_02.ipt",
+                "volume": 3352.56,
+                "area": 1930.77,
+                "mass": 3.35
+            }
+        },
+        "registered_at": "2026-06-12 14:18:48",
+        "source": "이윤준.zip"
+    },
+    "9": {
+        "parts": {
+            "part1": {
+                "name": "09_01:1",
+                "filename": "09_01.ipt",
+                "volume": 4589.54,
+                "area": 3617.1,
+                "mass": 4.59
+            },
+            "part2": {
+                "name": "09_02:1",
+                "filename": "09_02.ipt",
+                "volume": 4173.99,
+                "area": 3303.51,
+                "mass": 4.17
+            }
+        },
+        "registered_at": "2026-06-12 14:18:49",
+        "source": "이윤준.zip"
+    },
+    "10": {
+        "parts": {
+            "part1": {
+                "name": "09_01:1",
+                "filename": "09_01.ipt",
+                "volume": 3285.85,
+                "area": 2708.68,
+                "mass": 3.29
+            },
+            "part2": {
+                "name": "09_02:1",
+                "filename": "09_02.ipt",
+                "volume": 3139.61,
+                "area": 2006.29,
+                "mass": 3.14
+            }
+        },
+        "registered_at": "2026-06-12 14:18:49",
+        "source": "이윤준.zip"
+    },
+    "11": {
+        "parts": {
+            "part1": {
+                "name": "09_01:1",
+                "filename": "09_01.ipt",
+                "volume": 7363.35,
+                "area": 4828.7,
+                "mass": 7.36
+            },
+            "part2": {
+                "name": "09_02:1",
+                "filename": "09_02.ipt",
+                "volume": 4334.11,
+                "area": 1845.06,
+                "mass": 4.33
+            }
+        },
+        "registered_at": "2026-06-12 14:18:50",
+        "source": "이윤준.zip"
+    },
+    "12": {
+        "parts": {
+            "part1": {
+                "name": "09_01:1",
+                "filename": "09_01.ipt",
+                "volume": 6839.06,
+                "area": 4881.14,
+                "mass": 6.84
+            },
+            "part2": {
+                "name": "09_02:1",
+                "filename": "09_02.ipt",
+                "volume": 5250.17,
+                "area": 2354.25,
+                "mass": 5.25
+            }
+        },
+        "registered_at": "2026-06-12 14:18:51",
+        "source": "이윤준.zip"
+    },
+    "13": {
+        "parts": {
+            "part1": {
+                "name": "09_01:1",
+                "filename": "09_01.ipt",
+                "volume": 4192.0,
+                "area": 4122.27,
+                "mass": 4.19
+            },
+            "part2": {
+                "name": "09_02:1",
+                "filename": "09_02.ipt",
+                "volume": 5493.49,
+                "area": 3108.18,
+                "mass": 5.49
+            }
+        },
+        "registered_at": "2026-06-12 14:18:51",
+        "source": "이윤준.zip"
+    },
+    "14": {
+        "parts": {
+            "part1": {
+                "name": "09_01:1",
+                "filename": "09_01.ipt",
+                "volume": 6191.93,
+                "area": 2973.85,
+                "mass": 6.19
+            },
+            "part2": {
+                "name": "09_02:1",
+                "filename": "09_02.ipt",
+                "volume": 2971.58,
+                "area": 2311.95,
+                "mass": 2.97
+            }
+        },
+        "registered_at": "2026-06-12 14:18:52",
+        "source": "이윤준.zip"
+    }
+}
