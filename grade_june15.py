@@ -1,0 +1,444 @@
+# -*- coding: utf-8 -*-
+"""
+Autodesk Inventor COM API 기반 자동 채점 스크립트 (grade_june15.py)
+- 6월 15일 TEST 채점용 (15번~27번 비번호 폴더 대상)
+- 주요 검사 항목:
+  1. 파일명 규칙 위반 여부 (01.ipt, 02.ipt, 03.iam, 03.stl, 04.cfb/gcode 등)
+  2. 부품 간 간섭 검사 (AnalyzeInterference)
+  3. 조립 파일 링크 유실 여부 (Missing References)
+"""
+
+import os
+import sys
+import re
+import json
+import traceback
+from datetime import datetime
+
+# 한글 출력 보장을 위한 설정
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except Exception:
+    pass
+
+TARGET_DIR = r"D:\이갑종\26 3학년 전일제\6월15 TEST\PC-13_10.128.56.103"
+
+def get_inventor_app(visible=False):
+    """실행 중인 Inventor를 찾거나 새로 시작합니다."""
+    import win32com.client
+    try:
+        app = win32com.client.gencache.EnsureDispatch("Inventor.Application")
+        try:
+            # 작동 중인지 확인
+            _ = app.Documents.Count
+            print("[정보] 실행 중인 Autodesk Inventor 연결 성공.")
+            return app, False
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    # 새로 기동
+    try:
+        app = win32com.client.gencache.EnsureDispatch("Inventor.Application")
+        app.Visible = visible
+        print("[정보] Autodesk Inventor 새로 시작 성공.")
+        return app, True
+    except Exception as e:
+        print(f"[오류] Inventor를 시작할 수 없습니다. COM API 확인 요망: {e}")
+        sys.exit(1)
+
+def extract_assembly_info(app, file_path):
+    """어셈블리(.iam) 파일을 분석하여 간섭 여부, 간섭 체적, 누락 파일 목록을 추출합니다."""
+    doc = None
+    try:
+        # 인벤터 경고창 비활성화 시도 (COM 오류 방지)
+        try:
+            app.SilentFiles = True
+        except Exception:
+            pass
+
+        # 문서 열기 (보이지 않게 오픈)
+        raw_doc = app.Documents.Open(file_path, OpenVisible=False)
+        import win32com.client
+        try:
+            doc = win32com.client.CastTo(raw_doc, "AssemblyDocument")
+        except Exception:
+            doc = raw_doc
+            
+        comp_def = doc.ComponentDefinition
+        occurrences = comp_def.Occurrences
+        
+        # 1. 부품 간 간섭 검사 (Interference Analysis)
+        interference_vol_mm3 = 0.0
+        has_interference = False
+        
+        if occurrences.Count >= 2:
+            oGroup1 = app.TransientObjects.CreateObjectCollection()
+            oGroup2 = app.TransientObjects.CreateObjectCollection()
+            
+            # 2개 부품이므로 1번과 2번의 간섭 검사 진행
+            occ1 = occurrences.Item(1)
+            occ2 = occurrences.Item(2)
+            
+            oGroup1.Add(occ1)
+            oGroup2.Add(occ2)
+            
+            try:
+                results = comp_def.AnalyzeInterference(oGroup1, oGroup2)
+                if results.Count > 0:
+                    has_interference = True
+                    for r_idx in range(1, results.Count + 1):
+                        # cm^3 -> mm^3 변환
+                        interference_vol_mm3 += results.Item(r_idx).Volume * 1000.0
+            except Exception as e:
+                print(f"[경고] 간섭 분석 중 오류 발생: {e}")
+                
+        # 2. 문서 참조 상태 확인 (누락 파일 검사)
+        unresolved_files = []
+        for ref_desc in doc.ReferencedFileDescriptors:
+            if ref_desc.ReferenceStatus == 2:  # kMissingReference (참조 파일 유실)
+                unresolved_files.append(ref_desc.DisplayName)
+
+        return {
+            "success": True,
+            "has_interference": has_interference,
+            "interference_volume": round(interference_vol_mm3, 2),
+            "unresolved_files": unresolved_files,
+            "components_count": occurrences.Count
+        }
+        
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+    finally:
+        if doc is not None:
+            try:
+                doc.Close(True) # 변경 사항 저장 없이 닫기
+            except Exception:
+                pass
+
+def check_naming_convention(folder_name, files):
+    """비번호(폴더명) 기준으로 파일명 규칙을 검사합니다."""
+    # 표준 규칙:
+    # 1. 단품 1: XX_01.ipt
+    # 2. 단품 2: XX_02.ipt
+    # 3. 어셈블리: XX_03.iam
+    # 4. STL: XX_03.stl
+    # 5. 슬라이싱: XX_04[...].cfb 또는 gcode 등
+    
+    # 대소문자 구분 없이 매칭
+    files_lower = [f.lower() for f in files]
+    
+    expected_part1 = f"{folder_name}_01.ipt"
+    expected_part2 = f"{folder_name}_02.ipt"
+    expected_assembly = f"{folder_name}_03.iam"
+    expected_stl = f"{folder_name}_03.stl"
+    
+    status = {
+        "part1": {"found": False, "exact_match": False, "filename": ""},
+        "part2": {"found": False, "exact_match": False, "filename": ""},
+        "assembly": {"found": False, "exact_match": False, "filename": ""},
+        "stl": {"found": False, "exact_match": False, "filename": ""},
+        "slicing": {"found": False, "exact_match": False, "filename": ""},
+        "extra_files": []
+    }
+    
+    # 실제 존재하는 파일들 매핑
+    matched_files = set()
+    
+    # 1. 단품 1 매칭
+    for f in files:
+        fl = f.lower()
+        if fl == expected_part1.lower():
+            status["part1"] = {"found": True, "exact_match": True, "filename": f}
+            matched_files.add(f)
+            break
+    if not status["part1"]["found"]:
+        # 이름이 완전 일치하지 않는 경우 유사한 파일 찾기
+        for f in files:
+            fl = f.lower()
+            if fl.endswith(".ipt") and ("_01" in fl or "_1" in fl or "part1" in fl):
+                status["part1"] = {"found": True, "exact_match": False, "filename": f}
+                matched_files.add(f)
+                break
+                
+    # 2. 단품 2 매칭
+    for f in files:
+        if f in matched_files:
+            continue
+        fl = f.lower()
+        if fl == expected_part2.lower():
+            status["part2"] = {"found": True, "exact_match": True, "filename": f}
+            matched_files.add(f)
+            break
+    if not status["part2"]["found"]:
+        for f in files:
+            if f in matched_files:
+                continue
+            fl = f.lower()
+            if fl.endswith(".ipt") and ("_02" in fl or "_2" in fl or "part2" in fl or "_03" in fl or "_3" in fl):
+                # 27번처럼 27_03.ipt 가 단품 2일 수도 있음
+                status["part2"] = {"found": True, "exact_match": False, "filename": f}
+                matched_files.add(f)
+                break
+
+    # 3. 어셈블리 매칭
+    for f in files:
+        fl = f.lower()
+        if fl == expected_assembly.lower():
+            status["assembly"] = {"found": True, "exact_match": True, "filename": f}
+            matched_files.add(f)
+            break
+    if not status["assembly"]["found"]:
+        for f in files:
+            fl = f.lower()
+            if fl.endswith(".iam"):
+                status["assembly"] = {"found": True, "exact_match": False, "filename": f}
+                matched_files.add(f)
+                break
+                
+    # 4. STL 매칭
+    for f in files:
+        fl = f.lower()
+        if fl == expected_stl.lower():
+            status["stl"] = {"found": True, "exact_match": True, "filename": f}
+            matched_files.add(f)
+            break
+    if not status["stl"]["found"]:
+        for f in files:
+            fl = f.lower()
+            if fl.endswith(".stl"):
+                status["stl"] = {"found": True, "exact_match": False, "filename": f}
+                matched_files.add(f)
+                break
+
+    # 5. 슬라이싱 매칭 (XX_04로 시작하는지 검사)
+    slicing_pattern = re.compile(rf"^{folder_name}_04", re.IGNORECASE)
+    for f in files:
+        fl = f.lower()
+        # 확장자가 .gcode, .cfb, .3gcode 등 3D 프린팅 파일인 경우
+        if fl.endswith(('.cfb', '.gcode', '.3gcode', '.zcode', '.hvs')):
+            if slicing_pattern.match(f):
+                status["slicing"] = {"found": True, "exact_match": True, "filename": f}
+                matched_files.add(f)
+                break
+            else:
+                status["slicing"] = {"found": True, "exact_match": False, "filename": f}
+                matched_files.add(f)
+                break
+
+    # 나머지 불필요한 파일이나 기타 파일 기록
+    for f in files:
+        if f not in matched_files:
+            # OldVersions 폴더 같은 것은 제외
+            status["extra_files"].append(f)
+            
+    return status
+
+def run_grading():
+    if not os.path.exists(TARGET_DIR):
+        print(f"[오류] 대상 폴더가 존재하지 않습니다: {TARGET_DIR}")
+        return
+
+    # 15~27번 폴더 목록 추출
+    subdirs = sorted([d for d in os.listdir(TARGET_DIR) if os.path.isdir(os.path.join(TARGET_DIR, d)) and d.isdigit()])
+    print(f"[정보] 감지된 비번호 폴더 목록: {', '.join(subdirs)}")
+
+    app, launched = get_inventor_app(visible=False)
+    
+    results = {}
+
+    try:
+        for idx, folder in enumerate(subdirs, 1):
+            folder_path = os.path.join(TARGET_DIR, folder)
+            files = [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
+            
+            print(f"[{idx}/{len(subdirs)}] 비번호 {folder}번 검사 중...")
+            
+            # 1. 파일명 규칙 검사
+            naming_status = check_naming_convention(folder, files)
+            
+            # 2. 어셈블리 검사
+            assembly_info = None
+            iam_file = None
+            
+            # 어셈블리 파일이 발견된 경우
+            if naming_status["assembly"]["found"]:
+                iam_file = os.path.join(folder_path, naming_status["assembly"]["filename"])
+            else:
+                # 못 찾은 경우 임의의 .iam 탐색
+                for f in files:
+                    if f.lower().endswith(".iam"):
+                        iam_file = os.path.join(folder_path, f)
+                        break
+                        
+            if iam_file and os.path.exists(iam_file):
+                print(f"  -> 어셈블리 분석 실행: {os.path.basename(iam_file)}")
+                assembly_info = extract_assembly_info(app, iam_file)
+            else:
+                print(f"  -> [경고] 어셈블리(.iam) 파일을 찾을 수 없습니다.")
+                assembly_info = {"success": False, "error": "어셈블리(.iam) 파일 없음"}
+
+            results[folder] = {
+                "naming": naming_status,
+                "assembly": assembly_info
+            }
+            
+    finally:
+        if launched:
+            app.Quit()
+
+    # 보고서 작성
+    report_path = os.path.join(TARGET_DIR, "grade_report_june15.md")
+    
+    md = []
+    md.append(f"# 3D 프린터 운용기능사 실기 시험 자동 채점 보고서 (6월15 TEST)")
+    md.append(f"- **채점 일시**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    md.append(f"- **대상 폴더**: `{TARGET_DIR}`")
+    md.append(f"- **검사 대상 비번호**: {len(subdirs)}개 ({subdirs[0]}번 ~ {subdirs[-1]}번)\n")
+    
+    md.append("## 1. 종합 채점 결과 요약")
+    md.append("| 비번호 | 파일명 규칙 | 간섭 발생 여부 | 링크 유실 여부 | 구성 부품 수 | 최종 판정 |")
+    md.append("| :---: | :---: | :---: | :---: | :---: | :---: |")
+    
+    for folder in subdirs:
+        res = results[folder]
+        naming = res["naming"]
+        assembly = res["assembly"]
+        
+        # 파일명 규칙 판정
+        naming_ok = True
+        naming_errors = []
+        
+        for key in ["part1", "part2", "assembly", "stl", "slicing"]:
+            val = naming[key]
+            if not val["found"]:
+                naming_ok = False
+                naming_errors.append(f"{key} 누락")
+            elif not val["exact_match"]:
+                naming_ok = False
+                naming_errors.append(f"{key} 이름 오류 (`{val['filename']}`)")
+                
+        naming_str = "✔️ 정상" if naming_ok else f"❌ 오류 ({', '.join(naming_errors)})"
+        
+        # 간섭 및 링크 판정
+        interference_str = "-"
+        link_str = "-"
+        comp_count_str = "-"
+        decision = "합격"
+        decision_reasons = []
+        
+        if assembly and assembly.get("success"):
+            # 간섭 여부
+            if assembly["has_interference"]:
+                interference_str = f"❌ 발생 ({assembly['interference_volume']:.1f} mm³)"
+                decision = "실격"
+                decision_reasons.append("부품 간 간섭")
+            else:
+                interference_str = "✔️ 없음"
+                
+            # 링크 유실 여부
+            if assembly["unresolved_files"]:
+                link_str = f"❌ 유실 ({len(assembly['unresolved_files'])}개)"
+                decision = "실격"
+                decision_reasons.append("단품 링크 유실")
+            else:
+                link_str = "✔️ 정상"
+                
+            comp_count_str = f"{assembly['components_count']}개"
+            if assembly['components_count'] < 2:
+                decision = "실격"
+                decision_reasons.append("조립 부품 수 부족 (2개 미만)")
+        else:
+            err_msg = assembly.get("error") if assembly else "분석 불가"
+            interference_str = "N/A"
+            link_str = "N/A"
+            decision = "실격"
+            decision_reasons.append(f"어셈블리 분석 실패 ({err_msg})")
+            
+        if not naming_ok:
+            # 실격이 아닌 경우 감점으로 처리하거나, 파일 누락 시 실격
+            has_missing = any(not naming[k]["found"] for k in ["part1", "part2", "assembly", "stl", "slicing"])
+            if has_missing:
+                decision = "실격"
+                decision_reasons.append("필수 파일 누락")
+            else:
+                if decision != "실격":
+                    decision = "감점"
+                    decision_reasons.append("파일명 규칙 위반")
+                    
+        decision_str = f"**{decision}**"
+        if decision_reasons:
+            decision_str += f" ({', '.join(decision_reasons)})"
+            
+        md.append(f"| {folder}번 | {naming_str} | {interference_str} | {link_str} | {comp_count_str} | {decision_str} |")
+        
+    md.append("\n")
+    md.append("## 2. 비번호별 상세 검사 정보")
+    
+    for folder in subdirs:
+        res = results[folder]
+        naming = res["naming"]
+        assembly = res["assembly"]
+        
+        md.append(f"### 👤 비번호 {folder}번 상세")
+        
+        # 파일 구성 상태
+        md.append("#### 📂 파일 구성 및 명명 규칙 상태")
+        md.append("| 항목 | 예상 파일명 | 실제 파일명 | 상태 |")
+        md.append("| :--- | :--- | :--- | :--- |")
+        
+        expected_names = {
+            "part1": f"{folder}_01.ipt",
+            "part2": f"{folder}_02.ipt",
+            "assembly": f"{folder}_03.iam",
+            "stl": f"{folder}_03.stl",
+            "slicing": f"{folder}_04[...].(cfb/gcode)"
+        }
+        
+        for key in ["part1", "part2", "assembly", "stl", "slicing"]:
+            val = naming[key]
+            status_cell = ""
+            if not val["found"]:
+                status_cell = "❌ **누락**"
+            elif val["exact_match"]:
+                status_cell = "✔️ **일치**"
+            else:
+                status_cell = "⚠️ **파일명 오류**"
+                
+            actual_name = val["filename"] if val["found"] else "-"
+            md.append(f"| {key} | `{expected_names[key]}` | `{actual_name}` | {status_cell} |")
+            
+        if naming["extra_files"]:
+            md.append(f"\n- **기타 파일 목록**: {', '.join([f'`{x}`' for x in naming['extra_files']])}")
+            
+        # 어셈블리 분석 정보
+        md.append("\n#### 🛠️ 3D 모델링 분석 상태 (Autodesk Inventor)")
+        if assembly and assembly.get("success"):
+            md.append(f"- **구성 부품 수**: {assembly['components_count']}개")
+            if assembly["has_interference"]:
+                md.append(f"- **부품 간 간섭**: ❌ **발생** (간섭 체적: `{assembly['interference_volume']:.2f}` mm³)")
+            else:
+                md.append("- **부품 간 간섭**: ✔️ **없음 (정상)**")
+                
+            if assembly["unresolved_files"]:
+                md.append(f"- **링크 유실 파일**: ❌ **유실** ({', '.join([f'`{x}`' for x in assembly['unresolved_files']])})")
+            else:
+                md.append("- **링크 유실 파일**: ✔️ **없음 (정상)**")
+        else:
+            err_msg = assembly.get("error") if assembly else "분석 정보 없음"
+            md.append(f"- ❌ **어셈블리 분석 실패 사유**: `{err_msg}`")
+            
+        md.append("\n---\n")
+        
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(md))
+        
+    print("\n" + "="*75)
+    print(" 6월 15일 TEST 일괄 채점 완료")
+    print("="*75)
+    print(f" 생성된 보고서: {report_path}")
+    print("="*75)
+
+if __name__ == "__main__":
+    run_grading()
