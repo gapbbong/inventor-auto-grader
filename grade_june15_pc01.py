@@ -2,17 +2,14 @@
 """
 Autodesk Inventor COM API 기반 자동 채점 스크립트 (grade_june15_pc01.py)
 - PC-13 폴더를 기준(Reference)으로 삼아 PC-01 폴더의 제출물을 정밀 검사합니다.
-- 주요 검사 항목:
-  1. 파일명 규칙 위반 여부 (언더바 _ 가 정답 규칙)
-  2. 부품 간 간섭 검사
-  3. 조립 파일 링크 유실 여부
-  4. 기준(PC-13) 대비 단품 체적 오차 검사 (허용 오차 5% 이내)
+- 임시 비번호 처리: 폴더 내 파일명에서 감지된 임시 비번호(예: 11번)를 기준으로 파일명 명명 규칙을 유연하게 검사합니다.
 """
 
 import os
 import sys
 import re
 import json
+import collections
 import traceback
 from datetime import datetime
 
@@ -153,12 +150,28 @@ def extract_assembly_info(app, file_path):
             except Exception:
                 pass
 
+def detect_bibunho_prefix(files):
+    """파일명 목록에서 가장 많이 나타나는 비번호 숫자 접두사를 감지합니다."""
+    prefixes = []
+    for f in files:
+        m = re.match(r'^(\d+)', f)
+        if m:
+            prefixes.append(m.group(1))
+    if prefixes:
+        counter = collections.Counter(prefixes)
+        return counter.most_common(1)[0][0]
+    return None
+
 def check_naming_convention(folder_name, files):
-    """비번호(폴더명) 기준으로 파일명 규칙을 검사합니다."""
-    expected_part1 = f"{folder_name}_01.ipt"
-    expected_part2 = f"{folder_name}_02.ipt"
-    expected_assembly = f"{folder_name}_03.iam"
-    expected_stl = f"{folder_name}_03.stl"
+    """감지된 비번호(또는 폴더명) 기준으로 파일명 규칙을 검사합니다."""
+    # 파일명에서 감지된 비번호 접두사 사용 (임시 비번호 대응)
+    detected_bibunho = detect_bibunho_prefix(files)
+    bibunho = detected_bibunho if detected_bibunho else folder_name
+    
+    expected_part1 = f"{bibunho}_01.ipt"
+    expected_part2 = f"{bibunho}_02.ipt"
+    expected_assembly = f"{bibunho}_03.iam"
+    expected_stl = f"{bibunho}_03.stl"
     
     status = {
         "part1": {"found": False, "exact_match": False, "filename": ""},
@@ -166,7 +179,9 @@ def check_naming_convention(folder_name, files):
         "assembly": {"found": False, "exact_match": False, "filename": ""},
         "stl": {"found": False, "exact_match": False, "filename": ""},
         "slicing": {"found": False, "exact_match": False, "filename": ""},
-        "extra_files": []
+        "extra_files": [],
+        "used_bibunho": bibunho,
+        "is_temporary": (bibunho != folder_name)
     }
     
     matched_files = set()
@@ -181,7 +196,12 @@ def check_naming_convention(folder_name, files):
     if not status["part1"]["found"]:
         for f in files:
             fl = f.lower()
-            if fl.endswith(".ipt") and ("_01" in fl or "_1" in fl or "part1" in fl or "-01" in fl or "-1" in fl):
+            if fl.endswith(".ipt") and (f"_{bibunho}_01" in fl or f"{bibunho}_01" in fl or f"{bibunho}-01" in fl or f"_{bibunho}-01" in fl or fl.startswith(f"{bibunho}_01") or fl.startswith(f"{bibunho}-01")):
+                status["part1"] = {"found": True, "exact_match": False, "filename": f}
+                matched_files.add(f)
+                break
+            # 아주 단순 패턴 매치 보완
+            elif fl.endswith(".ipt") and (f"_{bibunho}_1" in fl or f"{bibunho}_1" in fl or f"{bibunho}-1" in fl):
                 status["part1"] = {"found": True, "exact_match": False, "filename": f}
                 matched_files.add(f)
                 break
@@ -200,7 +220,7 @@ def check_naming_convention(folder_name, files):
             if f in matched_files:
                 continue
             fl = f.lower()
-            if fl.endswith(".ipt") and ("_02" in fl or "_2" in fl or "part2" in fl or "_03" in fl or "_3" in fl or "-02" in fl or "-2" in fl or "-03" in fl or "-3" in fl):
+            if fl.endswith(".ipt") and (f"{bibunho}_02" in fl or f"{bibunho}-02" in fl or f"{bibunho}_03" in fl or f"{bibunho}-03" in fl or f"{bibunho}_2" in fl or f"{bibunho}-2" in fl):
                 status["part2"] = {"found": True, "exact_match": False, "filename": f}
                 matched_files.add(f)
                 break
@@ -215,7 +235,7 @@ def check_naming_convention(folder_name, files):
     if not status["assembly"]["found"]:
         for f in files:
             fl = f.lower()
-            if fl.endswith(".iam"):
+            if fl.endswith(".iam") and (f"{bibunho}" in fl):
                 status["assembly"] = {"found": True, "exact_match": False, "filename": f}
                 matched_files.add(f)
                 break
@@ -230,13 +250,13 @@ def check_naming_convention(folder_name, files):
     if not status["stl"]["found"]:
         for f in files:
             fl = f.lower()
-            if fl.endswith(".stl"):
+            if fl.endswith(".stl") and (f"{bibunho}" in fl):
                 status["stl"] = {"found": True, "exact_match": False, "filename": f}
                 matched_files.add(f)
                 break
 
     # 5. 슬라이싱 매칭
-    slicing_pattern = re.compile(rf"^{folder_name}_04", re.IGNORECASE)
+    slicing_pattern = re.compile(rf"^{bibunho}_04", re.IGNORECASE)
     for f in files:
         fl = f.lower()
         if fl.endswith(('.cfb', '.gcode', '.3gcode', '.zcode', '.hvs')):
@@ -244,7 +264,7 @@ def check_naming_convention(folder_name, files):
                 status["slicing"] = {"found": True, "exact_match": True, "filename": f}
                 matched_files.add(f)
                 break
-            else:
+            elif f"{bibunho}" in fl:
                 status["slicing"] = {"found": True, "exact_match": False, "filename": f}
                 matched_files.add(f)
                 break
@@ -350,14 +370,17 @@ def run_grading():
     md.append(f"- **검사 대상 비번호**: {len(subdirs)}개 ({', '.join(subdirs)}번)\n")
     
     md.append("## 1. 종합 채점 결과 요약")
-    md.append("| 비번호 | 파일명 규칙 | 간섭 여부 | 링크 유실 여부 | 체적 오차 검사 | 최종 판정 |")
-    md.append("| :---: | :---: | :---: | :---: | :---: | :---: |")
+    md.append("| 비번호 | 적용 비번호 | 파일명 규칙 | 간섭 여부 | 링크 유실 여부 | 체적 오차 검사 | 최종 판정 |")
+    md.append("| :---: | :---: | :---: | :---: | :---: | :---: | :---: |")
     
     for folder in subdirs:
         res = results[folder]
         naming = res["naming"]
         assembly = res["assembly"]
         ref_parts = ref_database.get(folder, {})
+        
+        used_bibunho = naming["used_bibunho"]
+        bibunho_type = f"**{used_bibunho}번** (임시)" if naming["is_temporary"] else f"{used_bibunho}번"
         
         # 파일명 규칙 판정
         naming_ok = True
@@ -454,7 +477,7 @@ def run_grading():
         if decision_reasons:
             decision_str += f" ({', '.join(decision_reasons)})"
             
-        md.append(f"| {folder}번 | {naming_str} | {interference_str} | {link_str} | {vol_str} | {decision_str} |")
+        md.append(f"| {folder}번 | {bibunho_type} | {naming_str} | {interference_str} | {link_str} | {vol_str} | {decision_str} |")
         
     md.append("\n")
     md.append("## 2. 비번호별 상세 검사 정보")
@@ -464,20 +487,21 @@ def run_grading():
         naming = res["naming"]
         assembly = res["assembly"]
         ref_parts = ref_database.get(folder, {})
+        bibunho = naming["used_bibunho"]
         
-        md.append(f"### 👤 비번호 {folder}번 상세")
+        md.append(f"### 👤 비번호 {folder}번 상세 (실제 비번호: {bibunho}번)")
         
         # 파일 구성 상태
         md.append("#### 📂 파일 구성 및 명명 규칙 상태")
-        md.append("| 항목 | 예상 파일명 | 실제 파일명 | 상태 |")
+        md.append("| 항목 | 예상 파일명 (기준 비번호: {0}) | 실제 파일명 | 상태 |".format(bibunho))
         md.append("| :--- | :--- | :--- | :--- |")
         
         expected_names = {
-            "part1": f"{folder}_01.ipt",
-            "part2": f"{folder}_02.ipt",
-            "assembly": f"{folder}_03.iam",
-            "stl": f"{folder}_03.stl",
-            "slicing": f"{folder}_04[...].(cfb/gcode)"
+            "part1": f"{bibunho}_01.ipt",
+            "part2": f"{bibunho}_02.ipt",
+            "assembly": f"{bibunho}_03.iam",
+            "stl": f"{bibunho}_03.stl",
+            "slicing": f"{bibunho}_04[...].(cfb/gcode)"
         }
         
         for key in ["part1", "part2", "assembly", "stl", "slicing"]:
