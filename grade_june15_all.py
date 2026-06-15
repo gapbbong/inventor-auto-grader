@@ -3,6 +3,7 @@
 Autodesk Inventor COM API 기반 일괄 자동 채점 스크립트 (grade_june15_all.py)
 - PC-13 폴더를 기준(Reference)으로 삼아 6월 15일 TEST 하위의 모든 학생 폴더를 검사합니다.
 - 임시 비번호 감지 로직 탑재
+- 폴더명 명명 패턴 유연성 지원 (예: 숫자로 구성된 폴더뿐만 아니라 '15_01' 등 숫자로 시작하는 폴더도 비번호로 감지)
 - 개별 학생 폴더별 보고서(grade_report_june15.md) 및 전체 종합 보고서(total_grade_report_june15.md) 작성
 """
 
@@ -284,12 +285,23 @@ def run_grading():
     student_dirs = sorted([d for d in os.listdir(BASE_DIR) if os.path.isdir(os.path.join(BASE_DIR, d)) and d.startswith("PC-")])
     print(f"[정보] 감지된 학생 폴더 목록 ({len(student_dirs)}개): {', '.join(student_dirs)}")
 
-    # 모든 비번호 목록 수집 (15~27)
-    bibunhos = sorted(list(set(
-        d for s_dir in student_dirs 
-        for d in os.listdir(os.path.join(BASE_DIR, s_dir)) 
-        if os.path.isdir(os.path.join(BASE_DIR, s_dir, d)) and d.isdigit()
-    )))
+    # 1) 전체 학생 폴더에서 비번호 매핑 딕셔너리 구축 (폴더명이 '15_01'이어도 '15'로 인식)
+    student_subdirs_map = {}
+    all_bibunhos = set()
+    
+    for s_dir in student_dirs:
+        s_dir_path = os.path.join(BASE_DIR, s_dir)
+        subdirs_map = {}
+        for d in os.listdir(s_dir_path):
+            if os.path.isdir(os.path.join(s_dir_path, d)):
+                m = re.match(r'^(\d+)', d)
+                if m:
+                    num_str = str(int(m.group(1))) # 01 -> 1, 15 -> 15 정규화
+                    subdirs_map[num_str] = d
+                    all_bibunhos.add(num_str)
+        student_subdirs_map[s_dir] = subdirs_map
+
+    bibunhos = sorted(list(all_bibunhos), key=lambda x: int(x))
     print(f"[정보] 분석 대상 비번호 범위: {bibunhos[0]}번 ~ {bibunhos[-1]}번 (총 {len(bibunhos)}개)")
 
     app, launched = get_inventor_app(visible=False)
@@ -297,8 +309,15 @@ def run_grading():
     # 1단계: 기준 폴더(PC-13)에서 정답 체적 데이터 빌드
     print("\n=== [1단계] 기준 폴더(PC-13) 정답 체적 데이터 구축 ===")
     ref_database = {}
+    ref_subdirs = student_subdirs_map.get(REF_DIR_NAME, {})
+    
     for folder in bibunhos:
-        ref_folder_path = os.path.join(REF_DIR, folder)
+        actual_ref_folder = ref_subdirs.get(folder)
+        if not actual_ref_folder:
+            # PC-13에 없으면 그냥 원래 폴더이름 '15' 등을 시도
+            actual_ref_folder = folder
+            
+        ref_folder_path = os.path.join(REF_DIR, actual_ref_folder)
         if not os.path.exists(ref_folder_path):
             continue
             
@@ -328,13 +347,15 @@ def run_grading():
 
     for s_idx, s_dir in enumerate(student_dirs, 1):
         s_dir_path = os.path.join(BASE_DIR, s_dir)
-        subdirs = sorted([d for d in os.listdir(s_dir_path) if os.path.isdir(os.path.join(s_dir_path, d)) and d.isdigit()])
+        subdirs_map = student_subdirs_map[s_dir]
+        subdirs = sorted(subdirs_map.keys(), key=lambda x: int(x))
         
         print(f"\n[{s_idx}/{len(student_dirs)}] {s_dir} 학생 검사 시작 (대상 과제: {', '.join(subdirs)})...")
         
         results = {}
         for folder in subdirs:
-            folder_path = os.path.join(s_dir_path, folder)
+            actual_folder_name = subdirs_map[folder]
+            folder_path = os.path.join(s_dir_path, actual_folder_name)
             files = [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
             
             naming_status = check_naming_convention(folder, files)
@@ -364,14 +385,14 @@ def run_grading():
     if launched:
         app.Quit()
 
-    # 3단계: 개별 학생 폴더별 보고서 작성 및 종합 보고서 작성
+    # 3단계: 보고서 작성
     print("\n=== [3단계] 채점 보고서 생성 ===")
     
     # 1) 개별 보고서 생성
     for s_dir in student_dirs:
         report_path = os.path.join(BASE_DIR, s_dir, "grade_report_june15.md")
         results = all_student_results[s_dir]
-        subdirs = sorted(results.keys())
+        subdirs = sorted(results.keys(), key=lambda x: int(x))
         
         md = []
         md.append(f"# 3D 프린터 운용기능사 실기 시험 자동 채점 보고서 ({s_dir.split('_')[0]})")
@@ -554,7 +575,7 @@ def run_grading():
     total_md.append("| " + " | ".join(["---"] * len(headers)) + " |")
     
     for s_dir in student_dirs:
-        student_label = s_dir.split('_')[0] # PC-01 등
+        student_label = s_dir.split('_')[0]
         row = [f"**{student_label}**"]
         results = all_student_results[s_dir]
         
@@ -570,11 +591,9 @@ def run_grading():
                 assembly = res["assembly"]
                 ref_parts = ref_database.get(b_str, {})
                 
-                # 비번호 및 판정 계산
                 decision = "합격"
                 reasons = []
                 
-                # 파일명 검사
                 naming_ok = True
                 for key in ["part1", "part2", "assembly", "stl", "slicing"]:
                     val = naming[key]
@@ -611,7 +630,6 @@ def run_grading():
                             decision = "감점"
                             reasons.append("파일명오류")
                             
-                # 상태 기록
                 if decision == "합격":
                     row.append("✔️ 합격")
                     passed_cnt += 1
@@ -622,9 +640,8 @@ def run_grading():
                     row.append(f"❌ 실격 ({','.join(reasons)})")
                     disq_reasons.append(f"{b}번:{','.join(reasons)}")
             else:
-                row.append("-") # 미제출
+                row.append("-")
                 
-        # 최종 판정 요약
         summary_parts = []
         if passed_cnt > 0:
             summary_parts.append(f"합격 {passed_cnt}개")
